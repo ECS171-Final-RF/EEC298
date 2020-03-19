@@ -6,30 +6,37 @@ from NeuralNetworkTest import *
 
 
 class MCTNode:
-    def __init__(self, state, action, prob, Q):
+    def __init__(self, state, action, QSum, P):
         self.state = state
         self.action = action
         self.N = 0
-        self.P = prob
-        self.Q = Q
+        self.QSum = QSum
         self.sibling = None
         self.firstChild = None
         self.parent = None
+        self.P = P
         self.UCB = self.calUCB()
-
-    # Initiate p vector based on the result calculated by NN
-    def initPVector(self, pVector):
-        self.pVector = pVector
 
     # Calculate UCB
     def calUCB(self):
         UCBfactor = 1.0
-        self.UCB = self.Q + UCBfactor * self.P / (1 + self.N)
+        if self.N == 0:
+            self.UCB = self.QSum + UCBfactor * self.P
+        else:
+            self.UCB = self.QSum * 1.0 / self.N + UCBfactor * self.P / (1 + self.N)
         return self.UCB
 
     # Node being visited
     def visited(self):
         self.N += 1
+
+    def showNodeInfo(self):
+        print("black stone position:", np.argwhere(self.state[0] == 1))
+        print("white stone position:", np.argwhere(self.state[1] == 1))
+        if self.N == 0:
+            print("action:", self.action, ", N:", self.N, ", QSum:", self.QSum, ", Q:", self.QSum,", P:", self.P, ", UCB:", self.UCB, "\n")
+        else:
+            print("action:", self.action, ", N:", self.N, ", QSum:", self.QSum, ", Q:", self.QSum * 1.0 / self.N,", P:", self.P, ", UCB:", self.UCB, "\n")
 
 
 
@@ -42,21 +49,20 @@ class MCT():
         self.NN = NN
 
     def buildTree(self, iterTime):
-        self.root = MCTNode(state = self.rootState, action = None, prob = 1.0, Q = 0.0)
+        self.root = MCTNode(state = self.rootState, action = None, QSum = 0.0, P = 1.0)
         # print(self.root.state)
-        self.expandAll(self.root)
-        pVector, V = self.NN.output(self.root.state)
-        self.root.initPVector(pVector)
+        pVector, v = self.NN.output(self.root.state)
+        self.expandAll(self.root, pVector)
 
         for iter in range(iterTime):
+            print("iteration time:", iter)
             selectedNode = self.select(self.root)
             print(selectedNode.action)
-            self.expandAll(selectedNode)
             # print(selectedNode)
             # Calculate p vector and v based on my NN
             pVector, v = self.NN.output(selectedNode.state)
-            # pVector = pVector / np.sum(pVector)
-            selectedNode.initPVector(pVector)
+            self.expandAll(selectedNode, pVector)
+            self.backPropagation(selectedNode, v)
 
         # # Randomly choose one move
         # move = np.random.choice(self.BOARD_SIZE ** 2, p = pVector)
@@ -71,21 +77,39 @@ class MCT():
 
 
     # Expand one layer completely
-    def expandAll(self, node):
+    def expandAll(self, node, pVector):
         # Find out all possible moves
         possibleMoves = np.argwhere(node.state[3] == 0)
+
+
+        ########### Game ends ########################
+        if possibleMoves == None:
+            pass
+        ##############################################
+
         # Expand a new layer with all possible moves
+        # print(pVector)
+        print(pVector)
+        move1DIndex = np.array([int(self.BOARD_SIZE * possibleMoves[i][0] + possibleMoves[i][1]) for i in range(len(possibleMoves)) ])
+        print(move1DIndex)
+        possiblePVector = pVector[move1DIndex]
+        possiblePVector = possiblePVector / np.sum(possiblePVector)
+
+        # print(possiblePVector)
+
         tempNode = None
         for (i, move) in enumerate(possibleMoves):
-            print("move:", move)
-            nextState, reward, done, info = go_env.step(move)
-            print(nextState[0])
+            # print("move:", move)
+            nextState, reward, done, info = go_env.step_batch(node.state, move)
+            # print(np.argwhere(nextState[0] == 1))
+            # print(np.argwhere(nextState[1] == 1))
             # Create a new node (prob and Q need to be calculated by the NN)
-            newNode = MCTNode(state = nextState, action = move, prob = 1.0, Q = 0.0)
+            newNode = MCTNode(state = nextState, action = move, QSum = 1.05, P = possiblePVector[i])
             if i == 0:
                 node.firstChild = newNode
             else:
                 tempNode.sibling = newNode
+            newNode.parent = node
             tempNode = newNode
 
         # pivot = node.firstChild
@@ -110,9 +134,16 @@ class MCT():
 
 
 
-    # Build and evaluate a new node
-    def evaluate(self):
-        pass
+    # Backpropagation
+    def backPropagation(self, node, v):
+        node.N += 1
+        node.QSum += v
+        node.calUCB()
+        node.showNodeInfo()
+        if node.parent == None:
+            return node
+
+        return self.backPropagation(node.parent, v)
 
 
 
@@ -139,15 +170,17 @@ if __name__ == '__main__':
     import gym
     BOARD_SIZE = 5
     go_env = gym.make('gym_go:go-v0', size=BOARD_SIZE, reward_method='real')
-
+    goGame = go_env.gogame
     NNTest = MyNN(BOARD_SIZE = BOARD_SIZE)
 
+    initial_state = go_env.reset()
+    # print(initial_state)
 
-    first_action = (2, 3)
-    state, reward, done, info = go_env.step(first_action)
+    # first_action = (2, 3)
+    # state, reward, done, info = go_env.step(first_action)
 
-    firstMCT = MCT(state, BOARD_SIZE = 5, NN = NNTest)
-    firstMCT.buildTree(iterTime = 10)
+    firstMCT = MCT(initial_state, BOARD_SIZE = BOARD_SIZE, NN = NNTest)
+    firstMCT.buildTree(iterTime = 100)
     # print(firstMCT.rootState)
 
 
