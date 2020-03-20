@@ -220,7 +220,7 @@ class MCT():
             # print(root)
             return root
         child = root.firstChild
-        selectedIndex = np.random.randint(root.childNum - 1)
+        selectedIndex = np.random.randint(max(0, root.childNum - 1))
         # print('Random number:', selectedIndex)
         i = 0
         while child != None and i != selectedIndex:
