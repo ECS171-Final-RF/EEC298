@@ -59,7 +59,7 @@ class MCT():
         epsilon = 0.2
 
         for iter in range(iterTime):
-            print("iteration time:", iter)
+            # print("iteration time:", iter)
 
             r = np.random.random()
             if r < epsilon:
@@ -67,14 +67,60 @@ class MCT():
             else:
                 selectedNode = self.selectUCB(self.root)
 
-            print(selectedNode.action)
+            # print(selectedNode.action)
             # print(selectedNode)
             # Calculate p vector and v based on my NN
             pVector, v = self.NN.output(selectedNode.state)
             self.expandAll(selectedNode, pVector)
             self.backPropagation(selectedNode, v)
 
-        self.showAllLeaf(self.root)
+        # self.showAllLeaf(self.root)
+        self.pList, self.V, action = self.returnPandV()
+        return self.pList, self.V, action
+
+
+
+
+    def returnPandV(self):
+        pList = np.zeros(self.BOARD_SIZE ** 2 + 1)
+        # for i in range(self.BOARD_SIZE ** 2 + 1):
+        #     iMove = [int(i / self.BOARD_SIZE), np.mod(i, self.BOARD_SIZE)]
+        #     if leaf != None:
+        #         if leaf.action == iMove:
+        #             if leaf.N != 0:
+        #                 self.pList[i] = leaf.QSum / leaf.N
+        #                 self.V +=
+        #             else:
+        #                 self.pList[i] = leaf.QSum
+        #             leaf = leaf.sibling
+        #         else:
+        #             self.pList[i] = 0.0
+        #     else:
+        #         self.pList[i] = 0.0
+        child = self.root.firstChild
+        selectedNode = child
+        while child != None:
+            try:
+                if child.QSum / child.N > selectedNode.QSum / selectedNode.N:
+                    selectedNode = child
+            except:
+                pass
+            child = child.sibling
+
+        try:
+            iMove = int(self.BOARD_SIZE * selectedNode.action[0] + selectedNode.action[1])
+        except:
+            iMove = self.BOARD_SIZE ** 2
+        pList[iMove] = 1.0
+        try:
+            V = selectedNode.QSum / selectedNode.N
+        except:
+            V = selectedNode.QSum / 1
+        return pList, V, selectedNode.action
+
+
+
+
 
 
 
@@ -135,7 +181,7 @@ class MCT():
             # print(np.argwhere(nextState[0] == 1))
             # print(np.argwhere(nextState[1] == 1))
             # Create a new node (prob and Q need to be calculated by the NN)
-            newNode = MCTNode(state = nextState, action = move, QSum = 1.1, P = possiblePVector[i])
+            newNode = MCTNode(state = nextState, action = move, QSum = 1.05, P = possiblePVector[i])
             if i == 0:
                 node.firstChild = newNode
             else:
@@ -174,12 +220,14 @@ class MCT():
             # print(root)
             return root
         child = root.firstChild
-        selectedIndex = np.random.randint(root.childNum)
+        selectedIndex = np.random.randint(root.childNum - 1)
         # print('Random number:', selectedIndex)
         i = 0
         while child != None and i != selectedIndex:
             child = child.sibling
             i = i + 1
+        if child == None:
+            print("None!", i)
         selectedNode = child
         return self.selectRandom(selectedNode)
 
@@ -227,7 +275,7 @@ class MCT():
 
 if __name__ == '__main__':
     import gym
-    BOARD_SIZE = 3
+    BOARD_SIZE = 5
     go_env = gym.make('gym_go:go-v0', size=BOARD_SIZE, reward_method='real')
     goGame = go_env.gogame
     NNTest = MyNN(BOARD_SIZE = BOARD_SIZE)
@@ -238,8 +286,21 @@ if __name__ == '__main__':
     # first_action = (2, 3)
     # state, reward, done, info = go_env.step(first_action)
 
-    firstMCT = MCT(initial_state, BOARD_SIZE = BOARD_SIZE, NN = NNTest)
-    firstMCT.buildTree(iterTime = 1000)
+    state = initial_state
+    for train_time in range(30):
+        myMCT = MCT(state, BOARD_SIZE=BOARD_SIZE, NN=NNTest)
+        print("training time:", train_time)
+        pList, V, move = myMCT.buildTree(iterTime = 300)
+        NNTest.train(initial_state, pList, V, 5)
+        print(pList,'\n', V)
+        nextState, reward, done, info = go_env.step_batch(state, move)
+        if done == 1:
+            state = initial_state
+        else:
+            state = nextState
+
+
+
     # print(firstMCT.rootState)
 
 
