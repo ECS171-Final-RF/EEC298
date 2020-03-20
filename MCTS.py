@@ -2,6 +2,7 @@
 # Monte Carlo Searching Tree
 
 import numpy as np
+import matplotlib.pyplot as plt
 # from NeuralNetworkTest import *
 from NeuralNetworkTest_Mingye import *
 
@@ -21,7 +22,7 @@ class MCTNode:
 
     # Calculate UCB
     def calUCB(self):
-        UCBfactor = 0.2
+        UCBfactor = 1.0
         if self.N == 0:
             self.UCB = self.QSum + UCBfactor * self.P
         else:
@@ -181,7 +182,7 @@ class MCT():
             # print(np.argwhere(nextState[0] == 1))
             # print(np.argwhere(nextState[1] == 1))
             # Create a new node (prob and Q need to be calculated by the NN)
-            newNode = MCTNode(state = nextState, action = move, QSum = 1.05, P = possiblePVector[i])
+            newNode = MCTNode(state = nextState, action = move, QSum = 0.0, P = possiblePVector[i])
             if i == 0:
                 node.firstChild = newNode
             else:
@@ -275,7 +276,7 @@ class MCT():
 
 if __name__ == '__main__':
     import gym
-    BOARD_SIZE = 5
+    BOARD_SIZE = 4
     go_env = gym.make('gym_go:go-v0', size=BOARD_SIZE, reward_method='real')
     goGame = go_env.gogame
     NNTest = MyNN(BOARD_SIZE = BOARD_SIZE)
@@ -287,10 +288,10 @@ if __name__ == '__main__':
     # state, reward, done, info = go_env.step(first_action)
 
     state = initial_state
-    for train_time in range(30):
+    for train_time in range(200):
         myMCT = MCT(state, BOARD_SIZE=BOARD_SIZE, NN=NNTest)
         print("training time:", train_time)
-        pList, V, move = myMCT.buildTree(iterTime = 300)
+        pList, V, move = myMCT.buildTree(iterTime = 500)
         NNTest.train(initial_state, pList, V, 5)
         print(pList,'\n', V)
         nextState, reward, done, info = go_env.step_batch(state, move)
@@ -298,6 +299,46 @@ if __name__ == '__main__':
             state = initial_state
         else:
             state = nextState
+
+    firstStepCount = np.zeros(BOARD_SIZE ** 2 + 1)
+    for train_time in range(5):
+        myMCT = MCT(initial_state, BOARD_SIZE=BOARD_SIZE, NN=NNTest)
+        print("training time:", train_time)
+        pList, V, move = myMCT.buildTree(iterTime = 600)
+        NNTest.train(initial_state, pList, V, 1)
+        print(pList,'\n', V)
+        firstStepCount[np.argwhere(pList == 1)] += 1
+
+
+
+
+    plt.figure(1)
+    plt.bar(x = np.arange(BOARD_SIZE ** 2 + 1), height=firstStepCount)
+    # plt.show()
+
+
+    fig = plt.figure(figsize=(8, 3))
+    ax1 = fig.add_subplot(111, projection='3d')
+
+    _x = np.arange(BOARD_SIZE)
+    _y = np.arange(BOARD_SIZE)
+    _xx, _yy = np.meshgrid(_x, _y)
+    x, y = _xx.ravel(), _yy.ravel()
+
+
+
+
+    top = firstStepCount[:-1]
+    bottom = np.zeros_like(top)
+    width = depth = 1
+
+    ax1.bar3d(x, y, bottom, width, depth, top, shade=True)
+    ax1.set_title('Shaded')
+    plt.show()
+
+
+
+
 
 
 
