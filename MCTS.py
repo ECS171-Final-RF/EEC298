@@ -2,7 +2,8 @@
 # Monte Carlo Searching Tree
 
 import numpy as np
-from NeuralNetworkTest import *
+# from NeuralNetworkTest import *
+from NeuralNetworkTest_Mingye import *
 
 
 class MCTNode:
@@ -16,10 +17,11 @@ class MCTNode:
         self.parent = None
         self.P = P
         self.UCB = self.calUCB()
+        self.childNum = 0
 
     # Calculate UCB
     def calUCB(self):
-        UCBfactor = 1.0
+        UCBfactor = 0.2
         if self.N == 0:
             self.UCB = self.QSum + UCBfactor * self.P
         else:
@@ -54,15 +56,27 @@ class MCT():
         pVector, v = self.NN.output(self.root.state)
         self.expandAll(self.root, pVector)
 
+        epsilon = 0.2
+
         for iter in range(iterTime):
             print("iteration time:", iter)
-            selectedNode = self.select(self.root)
+
+            r = np.random.random()
+            if r < epsilon:
+                selectedNode = self.selectRandom(self.root)
+            else:
+                selectedNode = self.selectUCB(self.root)
+
             print(selectedNode.action)
             # print(selectedNode)
             # Calculate p vector and v based on my NN
             pVector, v = self.NN.output(selectedNode.state)
             self.expandAll(selectedNode, pVector)
             self.backPropagation(selectedNode, v)
+
+        self.showAllLeaf(self.root)
+
+
 
         # # Randomly choose one move
         # move = np.random.choice(self.BOARD_SIZE ** 2, p = pVector)
@@ -80,18 +94,31 @@ class MCT():
     def expandAll(self, node, pVector):
         # Find out all possible moves
         possibleMoves = np.argwhere(node.state[3] == 0)
-
+        possibleMoves = np.append(possibleMoves, [[-1, -1]], axis = 0)
+        node.childNum = len(possibleMoves)
+        # print(possibleMoves)
+        # print("possible moves:", possibleMoves)
 
         ########### Game ends ########################
-        if possibleMoves == None:
-            pass
+        if possibleMoves.size == 1 and node.state[-1][0][0] == 0:
+            nextState, reward, done, info = go_env.step_batch(node.state, None)
+            print("reward:", reward, ", done:", done)
+            newNode = MCTNode(state=nextState, action=None, QSum=reward, P=1.0)
+            node.firstChild = newNode
+            newNode.parent = node
+            return
+
+        elif possibleMoves.size == 1 and node.state[-1][0][0] == 1:
+            return
+
+
         ##############################################
 
         # Expand a new layer with all possible moves
         # print(pVector)
-        print(pVector)
         move1DIndex = np.array([int(self.BOARD_SIZE * possibleMoves[i][0] + possibleMoves[i][1]) for i in range(len(possibleMoves)) ])
-        print(move1DIndex)
+        move1DIndex[-1] = -1
+        # print(move1DIndex)
         possiblePVector = pVector[move1DIndex]
         possiblePVector = possiblePVector / np.sum(possiblePVector)
 
@@ -99,18 +126,26 @@ class MCT():
 
         tempNode = None
         for (i, move) in enumerate(possibleMoves):
+            if i == len(possibleMoves) - 1 and node.state[-1][0][0] == 1:
+                return
+            if i == len(possibleMoves) - 1:
+                move = None
             # print("move:", move)
             nextState, reward, done, info = go_env.step_batch(node.state, move)
             # print(np.argwhere(nextState[0] == 1))
             # print(np.argwhere(nextState[1] == 1))
             # Create a new node (prob and Q need to be calculated by the NN)
-            newNode = MCTNode(state = nextState, action = move, QSum = 1.05, P = possiblePVector[i])
+            newNode = MCTNode(state = nextState, action = move, QSum = 1.1, P = possiblePVector[i])
             if i == 0:
                 node.firstChild = newNode
             else:
                 tempNode.sibling = newNode
             newNode.parent = node
             tempNode = newNode
+
+
+
+
 
         # pivot = node.firstChild
         # while pivot != None:
@@ -119,7 +154,7 @@ class MCT():
 
 
     # Select the leaf node with the largest UCB
-    def select(self, root):
+    def selectUCB(self, root):
         if root.firstChild == None:
             # print(root)
             return root
@@ -130,7 +165,25 @@ class MCT():
             if child.UCB > selectedNode.UCB:
                 selectedNode = child
             child = child.sibling
-        return self.select(selectedNode)
+        return self.selectUCB(selectedNode)
+
+
+    def selectRandom(self, root):
+        # root.showNodeInfo()
+        if root.firstChild == None:
+            # print(root)
+            return root
+        child = root.firstChild
+        selectedIndex = np.random.randint(root.childNum)
+        # print('Random number:', selectedIndex)
+        i = 0
+        while child != None and i != selectedIndex:
+            child = child.sibling
+            i = i + 1
+        selectedNode = child
+        return self.selectRandom(selectedNode)
+
+
 
 
 
@@ -139,12 +192,18 @@ class MCT():
         node.N += 1
         node.QSum += v
         node.calUCB()
-        node.showNodeInfo()
+        # node.showNodeInfo()
         if node.parent == None:
             return node
 
         return self.backPropagation(node.parent, v)
 
+    def showAllLeaf(self, node):
+        leaf = node.firstChild
+        print('\nAll leaves:\n')
+        while(leaf != None):
+            leaf.showNodeInfo()
+            leaf = leaf.sibling
 
 
 
@@ -168,7 +227,7 @@ class MCT():
 
 if __name__ == '__main__':
     import gym
-    BOARD_SIZE = 5
+    BOARD_SIZE = 3
     go_env = gym.make('gym_go:go-v0', size=BOARD_SIZE, reward_method='real')
     goGame = go_env.gogame
     NNTest = MyNN(BOARD_SIZE = BOARD_SIZE)
@@ -180,7 +239,7 @@ if __name__ == '__main__':
     # state, reward, done, info = go_env.step(first_action)
 
     firstMCT = MCT(initial_state, BOARD_SIZE = BOARD_SIZE, NN = NNTest)
-    firstMCT.buildTree(iterTime = 100)
+    firstMCT.buildTree(iterTime = 1000)
     # print(firstMCT.rootState)
 
 
